@@ -28,6 +28,8 @@ final class MenuBarWatcher {
     private(set) var state = State()
     private(set) var menuBarHeight: CGFloat = 24
 
+    /// Taller windows at the menu bar level are not the menu bar (see poll()).
+    private let maxMenuBarHeight: CGFloat = 80
     private let pollInterval: TimeInterval = 0.15
     private let settleDelay: TimeInterval = 0.6
     private let stopDelay: TimeInterval = 1.2
@@ -83,6 +85,7 @@ final class MenuBarWatcher {
         let mainMenuLevel = Int(CGWindowLevelForKey(.mainMenuWindow))
 
         var menuBarVisible = false
+        var menuBarHeights: [CGFloat] = []
         var popUps: [CGRect] = []
         let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
             as? [[String: Any]] ?? []
@@ -96,12 +99,18 @@ final class MenuBarWatcher {
             else { continue }
 
             if layer == mainMenuLevel, bounds.minY == screen.minY, bounds.height > 0 {
-                menuBarHeight = bounds.height
+                menuBarHeights.append(bounds.height)
             } else if layer == statusLevel, bounds.minY == screen.minY, bounds.height > 0 {
                 menuBarVisible = true
             } else if layer == menuLevel {
                 popUps.append(bounds)
             }
+        }
+
+        // In full screen another window at the menu bar level covers the whole screen;
+        // only a bar-sized one is the real menu bar.
+        if let height = menuBarHeights.filter({ $0 <= maxMenuBarHeight }).min() {
+            menuBarHeight = height
         }
 
         // Only drop-downs hanging from the menu bar count. Other pop-ups (right-click menus,
