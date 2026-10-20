@@ -5,7 +5,7 @@ import AppKit
 /// Signals (from the window list, no permissions needed):
 /// - Menu bar showing: status-item windows (Control Center, other apps' icons) sit at the top edge.
 ///   In full screen they disappear while the menu bar is hidden.
-/// - Drop-down open: a window at the pop-up menu level exists.
+/// - Drop-down open: a window at the pop-up menu level hangs from the bottom of the menu bar.
 ///
 /// To stay light it only polls while the mouse is in the menu bar area, while a menu is open,
 /// and briefly after switching desktops. Otherwise it does nothing.
@@ -13,7 +13,6 @@ import AppKit
 final class MenuBarWatcher {
     struct State: Equatable {
         var menuBarVisible = true
-        var menuOpen = false
         /// Open drop-down menus, in screen coordinates (same as window frames).
         var menuFrames: [NSRect] = []
         /// Mouse touching the top edge (in full screen this is what reveals the menu bar).
@@ -84,7 +83,7 @@ final class MenuBarWatcher {
         let mainMenuLevel = Int(CGWindowLevelForKey(.mainMenuWindow))
 
         var menuBarVisible = false
-        var menuFrames: [NSRect] = []
+        var popUps: [CGRect] = []
         let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
             as? [[String: Any]] ?? []
         for window in windows {
@@ -101,12 +100,17 @@ final class MenuBarWatcher {
             } else if layer == statusLevel, bounds.minY == screen.minY, bounds.height > 0 {
                 menuBarVisible = true
             } else if layer == menuLevel {
-                // Window list uses top-left origin; screen coordinates use bottom-left.
-                menuFrames.append(NSRect(
-                    x: bounds.minX, y: screen.maxY - bounds.maxY,
-                    width: bounds.width, height: bounds.height))
+                popUps.append(bounds)
             }
         }
+
+        // Only drop-downs hanging from the menu bar count. Other pop-ups (right-click menus,
+        // Preview's selection tool, ...) start elsewhere and are ignored.
+        let menuBarBottom = screen.minY + menuBarHeight
+        let menuFrames = popUps
+            .filter { abs($0.minY - menuBarBottom) <= 3 }
+            // Window list uses top-left origin; screen coordinates use bottom-left.
+            .map { NSRect(x: $0.minX, y: screen.maxY - $0.maxY, width: $0.width, height: $0.height) }
 
         let menuOpen = !menuFrames.isEmpty
         let inMenuBarArea = isMouseInMenuBarArea()
@@ -116,7 +120,6 @@ final class MenuBarWatcher {
         let quiet = !inMenuBarArea && !menuOpen
         var newState = State()
         newState.menuBarVisible = menuBarVisible
-        newState.menuOpen = menuOpen
         newState.menuFrames = menuFrames
         newState.mouseAtTop = isMouseAtTopEdge()
         newState.settled = quiet && now - lastActivity >= settleDelay

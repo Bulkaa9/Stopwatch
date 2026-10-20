@@ -161,9 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func checkHover() {
-        let margin = StopwatchView.shadowMargin
-        let pill = panel.frame.insetBy(dx: margin, dy: margin)
-        let hovered = pill.contains(NSEvent.mouseLocation)
+        let hovered = pillFrame.contains(NSEvent.mouseLocation)
         panel.isHovered = hovered
         panel.isCommandHeld = NSEvent.modifierFlags.contains(.command)
 

@@ -2,15 +2,19 @@ import AppKit
 
 /// The pill: white rounded outline, stopwatch icon and time, with a soft drop shadow.
 final class StopwatchView: NSView {
-    /// Two clicks closer together than this count as a double-click.
+    /// A second click starting within this time after the first one ends counts as a double-click.
     static let doubleClickInterval: TimeInterval = 0.3
+    /// A press only counts as a click (start/stop) if released within this time.
+    static let maxClickDuration: TimeInterval = 0.4
+    /// Moving at least this far while pressed turns the press into a drag.
+    static let dragThreshold: CGFloat = 3
 
     /// Empty space around the pill so the shadow is not clipped.
     static let shadowMargin: CGFloat = 4
 
     var onClick: (() -> Void)?
     var onDoubleClick: (() -> Void)?
-    /// Called while dragging with ⌥⌘, with the window origin the pill should move to.
+    /// Called while dragging, with the window origin the pill should move to.
     var onDrag: ((NSPoint) -> Void)?
 
     var time = "00:00" { didSet { if time != oldValue { needsDisplay = true } } }
@@ -31,8 +35,9 @@ final class StopwatchView: NSView {
     private let iconTextGap: CGFloat = 5
     private let rightPadding: CGFloat = 9
 
-    private var lastClickTime: TimeInterval?
-    private var dragStart: (mouse: NSPoint, origin: NSPoint)?
+    /// When the last click ended, for double-click detection.
+    private var lastClickEnd: TimeInterval?
+    private var press: (mouse: NSPoint, origin: NSPoint, time: TimeInterval, dragging: Bool)?
 
     init() {
         super.init(frame: .zero)
@@ -59,35 +64,40 @@ final class StopwatchView: NSView {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    /// ⌥⌘ starts a drag (a click without moving does nothing).
-    /// Otherwise acts on the first click immediately; a quick second click resets.
+    /// Decided on release: moved ≥ 3 px = drag (never starts/stops);
+    /// released within 0.4 s without moving = click; a quick second click = double-click (reset).
     override func mouseDown(with event: NSEvent) {
-        if event.modifierFlags.contains([.option, .command]) {
-            lastClickTime = nil
-            if let window {
-                dragStart = (NSEvent.mouseLocation, window.frame.origin)
-            }
-            return
-        }
-        if let last = lastClickTime, event.timestamp - last <= Self.doubleClickInterval {
-            lastClickTime = nil
-            onDoubleClick?()
-        } else {
-            lastClickTime = event.timestamp
-            onClick?()
-        }
+        guard let window else { return }
+        press = (NSEvent.mouseLocation, window.frame.origin, event.timestamp, false)
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let dragStart else { return }
+        guard var press else { return }
         let mouse = NSEvent.mouseLocation
-        onDrag?(NSPoint(
-            x: dragStart.origin.x + mouse.x - dragStart.mouse.x,
-            y: dragStart.origin.y + mouse.y - dragStart.mouse.y))
+        let dx = mouse.x - press.mouse.x
+        let dy = mouse.y - press.mouse.y
+        if !press.dragging, hypot(dx, dy) >= Self.dragThreshold {
+            press.dragging = true
+            lastClickEnd = nil
+            self.press = press
+        }
+        if press.dragging {
+            onDrag?(NSPoint(x: press.origin.x + dx, y: press.origin.y + dy))
+        }
     }
 
     override func mouseUp(with event: NSEvent) {
-        dragStart = nil
+        guard let press else { return }
+        self.press = nil
+        guard !press.dragging, event.timestamp - press.time <= Self.maxClickDuration else { return }
+
+        if let last = lastClickEnd, press.time - last <= Self.doubleClickInterval {
+            lastClickEnd = nil
+            onDoubleClick?()
+        } else {
+            lastClickEnd = event.timestamp
+            onClick?()
+        }
     }
 
     // MARK: Drawing

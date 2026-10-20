@@ -4,9 +4,9 @@ import AppKit
 /// including full-screen apps, on every desktop (Space).
 ///
 /// Clicks pass through to the app behind it. While the mouse is over it the pill fades,
-/// and holding ⌘ makes it solid and clickable.
+/// and holding ⌘ makes it solid: click to start/stop, double-click to reset, drag to move.
 final class StopwatchPanel: NSPanel {
-    static let hoverAlpha: CGFloat = 0.2
+    static let hoverAlpha: CGFloat = 0.05
 
     init(view: StopwatchView) {
         super.init(
@@ -59,12 +59,13 @@ final class StopwatchPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 
     /// False while hidden for the menu bar, a drop-down menu, or by the user.
-    var isShown = true { didSet { applyState() } }
-    var isHovered = false { didSet { applyState() } }
-    var isCommandHeld = false { didSet { applyState() } }
+    var isShown = true { didSet { if isShown != oldValue { applyState() } } }
+    var isHovered = false { didSet { if isHovered != oldValue { applyState() } } }
+    var isCommandHeld = false { didSet { if isCommandHeld != oldValue { applyState() } } }
 
     private var targetAlpha: CGFloat = 1
 
+    /// Only runs when something changed, so mouse moves elsewhere on screen cost nothing here.
     private func applyState() {
         ignoresMouseEvents = !(isShown && isHovered && isCommandHeld)
 
